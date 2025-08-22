@@ -21,6 +21,11 @@ export interface KataClientOptions {
   ca?: string;
   rejectUnauthorized?: boolean;
   timeoutMs?: number;
+  /**
+   * Включить детальные debug-логи. Можно передать true или свою функцию логгирования.
+   * Также можно включить через переменные окружения: KATA_SDK_DEBUG=1 или DEBUG=kata-sdk
+   */
+  debug?: boolean | ((...args: any[]) => void);
 }
 
 export class KataClient {
@@ -28,17 +33,47 @@ export class KataClient {
   private readonly sensorId: string;
   private readonly agent: UndiciAgent;
   private readonly timeoutMs: number;
+  private readonly dbg: (...args: any[]) => void;
 
   constructor(opts: KataClientOptions) {
     this.base = opts.baseUrl.replace(/\/+$/, "");
     this.sensorId = opts.sensorId;
     this.timeoutMs = opts.timeoutMs ?? 30_000;
 
+    // Debug logger setup
+    const env = (globalThis as any)?.process?.env;
+    const envEnabled = !!(
+      env?.KATA_SDK_DEBUG ||
+      (env?.DEBUG && /\bkata-sdk\b/i.test(env.DEBUG))
+    );
+    const optDbg = (opts as any).debug;
+    const enabled =
+      optDbg === true || typeof optDbg === "function" || envEnabled;
+    const targetFn: ((...args: any[]) => void) | undefined =
+      typeof optDbg === "function"
+        ? optDbg
+        : console.debug?.bind(console) ?? console.log.bind(console);
+    this.dbg = (...args: any[]) => {
+      if (enabled) targetFn?.("[kata-sdk]", ...args);
+    };
+
     this.agent = new UndiciAgent({
       connect: {
         cert: opts.cert,
         key: opts.key,
         ca: opts.ca,
+        rejectUnauthorized: opts.rejectUnauthorized !== false,
+      },
+    });
+
+    this.dbg("init", {
+      base: this.base,
+      sensorId: this.sensorId,
+      timeoutMs: this.timeoutMs,
+      tls: {
+        hasCert: Boolean(opts.cert),
+        hasKey: Boolean(opts.key),
+        hasCA: Boolean(opts.ca),
         rejectUnauthorized: opts.rejectUnauthorized !== false,
       },
     });
@@ -84,6 +119,12 @@ export class KataClient {
     const controller = new AbortController();
     const id = setTimeout(() => controller.abort(), this.timeoutMs);
     try {
+      this.dbg("submitScan: POST", {
+        url,
+        scanId,
+        filename: (input as any).filename,
+        objectType: input.objectType ?? "file",
+      });
       const res = await undiciFetch(url, {
         method: "POST",
         body: form as any,
@@ -106,6 +147,11 @@ export class KataClient {
       } catch {
         // игнорируем ошибки чтения тела, это не критично
       }
+      this.dbg("submitScan: response", {
+        status: res.status,
+        contentType,
+        message: message?.slice(0, 200),
+      });
       return {
         status: res.status,
         scanId,
@@ -165,6 +211,7 @@ export class KataClient {
     const controller = new AbortController();
     const id = setTimeout(() => controller.abort(), this.timeoutMs);
     try {
+      this.dbg("getScans: GET", { url });
       const res = await undiciFetch(url, {
         method: "GET",
         signal: controller.signal,
@@ -177,7 +224,13 @@ export class KataClient {
         // Попробуем всё равно распарсить JSON, иначе бросим понятную ошибку
         try {
           const data = await res.json();
-          return normalize(data);
+          const items = normalize(data);
+          this.dbg("getScans: response(non-json-type)", {
+            status: res.status,
+            contentType,
+            count: items.length,
+          });
+          return items;
         } catch (e) {
           const text = await res.text();
           throw new Error(
@@ -189,7 +242,13 @@ export class KataClient {
         }
       }
       const data = await res.json();
-      return normalize(data);
+      const items = normalize(data);
+      this.dbg("getScans: response", {
+        status: res.status,
+        contentType,
+        count: items.length,
+      });
+      return items;
     } finally {
       clearTimeout(id);
     }
@@ -209,12 +268,25 @@ export class KataClient {
     const deadline = Date.now() + this.timeoutMs;
     const states: KataScanState[] = ["processing", ...terminal];
 
+    this.dbg("waitForResult: start", {
+      scanId: String(scanId),
+      pollIntervalMs,
+      timeoutMs: this.timeoutMs,
+      states,
+    });
+
     do {
       const items = await this.getScans({
         states,
         sensorInstanceId: options?.sensorInstanceId,
       });
       const hit = items.find((i) => String(i.scanId) === String(scanId));
+      this.dbg("waitForResult: poll", {
+        found: Boolean(hit),
+        items: items.length,
+        now: Date.now(),
+        deadline,
+      });
       if (hit && hit.state.some((s) => terminal.includes(s))) return hit;
       await new Promise((r) => setTimeout(r, pollIntervalMs));
     } while (Date.now() < deadline);

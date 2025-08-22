@@ -82,6 +82,7 @@ const fs = require("node:fs/promises");
 - ca?: string — Корневой/промежуточный сертификат(ы) (PEM)
 - rejectUnauthorized?: boolean — Проверять сертификат сервера (по умолчанию true)
 - timeoutMs?: number — Общий таймаут операций клиента (по умолчанию 30000)
+- debug?: boolean | (..args)=>void — Включить детальные логи (или передать свой логгер). Также можно через env: KATA_SDK_DEBUG=1 или DEBUG=kata-sdk
 
 ### submitScan(input)
 
@@ -93,7 +94,8 @@ const fs = require("node:fs/promises");
 - objectType?: "file" — Тип объекта (на текущий момент поддерживается "file")
 - sensorInstanceId?: string
 
-Возвращает: `{ status: number; scanId?: string }`
+Возвращает: `{ status: number; scanId?: string; message?: string; ok?: boolean }`
+— если сервер вернул простой текст `OK`, то `message: "OK"` и `ok: true`.
 
 ### getScans(params?)
 
