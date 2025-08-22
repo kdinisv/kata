@@ -18,6 +18,8 @@ export interface KataScanItem {
 export interface SubmitScanResult {
   status: number;
   scanId?: string;
+  message?: string; // текст ответа сервера (например, "OK")
+  ok?: boolean; // true, если сервер вернул положительный простой ответ (например, "OK")
 }
 
 export interface GetScansParams {

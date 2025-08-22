@@ -90,15 +90,47 @@ export class KataClient {
         signal: controller.signal,
         dispatcher: this.agent,
       } as any);
-      return { status: res.status, scanId };
+      let message: string | undefined;
+      const contentType = (res.headers as any)?.get?.("content-type") ?? "";
+      try {
+        if (String(contentType).includes("application/json")) {
+          const j = await res.json();
+          // Пытаемся извлечь возможные поля message/ok
+          if (j && typeof j === "object") {
+            message = (j as any).message ?? JSON.stringify(j);
+          }
+        } else {
+          // Текстовый простой ответ (например, "OK")
+          message = (await res.text())?.trim();
+        }
+      } catch {
+        // игнорируем ошибки чтения тела, это не критично
+      }
+      return {
+        status: res.status,
+        scanId,
+        message,
+        ok: message?.toUpperCase() === "OK",
+      };
     } finally {
       clearTimeout(id);
     }
   }
 
   async getScans(params: GetScansParams = {}): Promise<KataScanItem[]> {
+    const asArrayState = (s: unknown): KataScanState[] => {
+      if (Array.isArray(s)) return s as KataScanState[];
+      if (typeof s === "string" && s.length) return [s as KataScanState];
+      return [];
+    };
+
     const normalize = (data: unknown): KataScanItem[] => {
-      if (Array.isArray(data)) return data as KataScanItem[];
+      const toItems = (arr: any[]): KataScanItem[] =>
+        arr.map((it) => ({
+          scanId: it?.scanId,
+          state: asArrayState(it?.state),
+        }));
+      if (Array.isArray(data)) return toItems(data as any[]);
       if (data && typeof data === "object") {
         const obj = data as Record<string, unknown>;
         const candidates = [
@@ -106,13 +138,13 @@ export class KataClient {
           obj.items,
           obj.response,
           obj.data,
-          // иногда приходит { result: [...] }
           (obj as any).result,
         ];
-        for (const c of candidates) if (Array.isArray(c)) return c as any;
+        for (const c of candidates)
+          if (Array.isArray(c)) return toItems(c as any[]);
       }
       throw new Error(
-        `KATA getScans: unexpected response shape; expected array, got ${
+        `KATA getScans: unexpected response shape; expected array or {scans:[]}, got ${
           data === null ? "null" : typeof data
         }`
       );
