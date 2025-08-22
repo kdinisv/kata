@@ -1,0 +1,47 @@
+{
+  "name": "@kdinisv/kata-sdk",
+  "version": "0.1.0",
+  "description": "Minimal Kaspersky ATA (KATA) client for Node.js",
+  "type": "module",
+  "main": "./dist/cjs/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/cjs/index.cjs",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=18.17"
+  },
+  "scripts": {
+    "build": "npm run clean && tsc && tsc -p tsconfig.cjs.json && node scripts/rename-cjs.mjs",
+    "clean": "rimraf dist",
+    "lint": "echo \"no lint configured\"",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "kata",
+    "kaspersky",
+    "security",
+    "sdk"
+  ],
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "undici": "^7.14.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "rimraf": "^6.0.1",
+    "typescript": "^5.9.2"
+  }
+}
