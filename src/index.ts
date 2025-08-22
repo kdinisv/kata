@@ -1,4 +1,8 @@
-import { Agent as UndiciAgent, fetch as undiciFetch } from "undici";
+import {
+  Agent as UndiciAgent,
+  fetch as undiciFetch,
+  FormData as UndiciFormData,
+} from "undici";
 import { randomUUID } from "node:crypto";
 export type {
   KataScanItem,
@@ -106,13 +110,14 @@ export class KataClient {
       return new Blob([]);
     };
 
-    const form = new FormData();
+    const form = new UndiciFormData();
+    // Порядок: сначала скалярные поля, потом файл
+    form.append("objectType", String(input.objectType ?? "file"));
+    form.append("scanId", String(scanId));
+    if (input.sensorInstanceId)
+      form.append("sensorInstanceId", String(input.sensorInstanceId));
     const blob = toBlob(input.file);
     form.append("content", blob, input.filename ?? "file.bin");
-    form.append("objectType", input.objectType ?? "file");
-    form.append("scanId", scanId);
-    if (input.sensorInstanceId)
-      form.append("sensorInstanceId", input.sensorInstanceId);
 
     const url = `${this.base}/kata/scanner/v1/sensors/${this.sensorId}/scans`;
 
