@@ -1,4 +1,4 @@
-import { Agent as UndiciAgent } from "undici";
+import { Agent as UndiciAgent, fetch as undiciFetch } from "undici";
 import { randomUUID } from "node:crypto";
 export type {
   KataScanItem,
@@ -84,12 +84,12 @@ export class KataClient {
     const controller = new AbortController();
     const id = setTimeout(() => controller.abort(), this.timeoutMs);
     try {
-      const res = await fetch(url, {
+      const res = await undiciFetch(url, {
         method: "POST",
         body: form as any,
-        // dispatcher: this.agent, // Removed: not supported by fetch API
         signal: controller.signal,
-      });
+        dispatcher: this.agent,
+      } as any);
       return { status: res.status, scanId };
     } finally {
       clearTimeout(id);
@@ -112,10 +112,11 @@ export class KataClient {
     const controller = new AbortController();
     const id = setTimeout(() => controller.abort(), this.timeoutMs);
     try {
-      const res = await fetch(url, {
+      const res = await undiciFetch(url, {
         method: "GET",
         signal: controller.signal,
-      });
+        dispatcher: this.agent,
+      } as any);
       if (res.status === 204) return [];
       if (!res.ok) throw new Error(`KATA getScans failed: HTTP ${res.status}`);
       const data = (await res.json()) as KataScanItem[];
