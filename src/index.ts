@@ -97,6 +97,27 @@ export class KataClient {
   }
 
   async getScans(params: GetScansParams = {}): Promise<KataScanItem[]> {
+    const normalize = (data: unknown): KataScanItem[] => {
+      if (Array.isArray(data)) return data as KataScanItem[];
+      if (data && typeof data === "object") {
+        const obj = data as Record<string, unknown>;
+        const candidates = [
+          obj.scans,
+          obj.items,
+          obj.response,
+          obj.data,
+          // иногда приходит { result: [...] }
+          (obj as any).result,
+        ];
+        for (const c of candidates) if (Array.isArray(c)) return c as any;
+      }
+      throw new Error(
+        `KATA getScans: unexpected response shape; expected array, got ${
+          data === null ? "null" : typeof data
+        }`
+      );
+    };
+
     const statesPart =
       params.states && params.states.length
         ? `state=${encodeURIComponent(params.states.join(","))}`
@@ -119,8 +140,24 @@ export class KataClient {
       } as any);
       if (res.status === 204) return [];
       if (!res.ok) throw new Error(`KATA getScans failed: HTTP ${res.status}`);
-      const data = (await res.json()) as KataScanItem[];
-      return data;
+      const contentType = (res.headers as any)?.get?.("content-type") ?? "";
+      if (!String(contentType).includes("application/json")) {
+        // Попробуем всё равно распарсить JSON, иначе бросим понятную ошибку
+        try {
+          const data = await res.json();
+          return normalize(data);
+        } catch (e) {
+          const text = await res.text();
+          throw new Error(
+            `KATA getScans: unexpected content-type ${contentType}; body starts with: ${text.slice(
+              0,
+              200
+            )}`
+          );
+        }
+      }
+      const data = await res.json();
+      return normalize(data);
     } finally {
       clearTimeout(id);
     }
